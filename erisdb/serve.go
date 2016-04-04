@@ -3,24 +3,28 @@
 package erisdb
 
 import (
-	"encoding/hex"
-	"fmt"
+	"bytes"
 	"path"
-	"strings"
-
-	ep "github.com/eris-ltd/eris-db/erisdb/pipe"
-	"github.com/eris-ltd/eris-db/server"
-
-	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/eris-ltd/mint-client/mintx/core"
 
 	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/log15"
 	acm "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/account"
 	. "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/common"
 	cfg "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/config"
 	tmcfg "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/config/tendermint"
+	dbm "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/db"
+	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/events"
 	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/node"
 	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/p2p"
-	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/types"
+
+	sm "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/state"
+	stypes "github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/state/types"
+	"github.com/eris-ltd/eris-db/Godeps/_workspace/src/github.com/tendermint/tendermint/wire"
+
+	ep "github.com/eris-ltd/eris-db/erisdb/pipe"
+	"github.com/eris-ltd/eris-db/server"
+
+	edbapp "github.com/eris-ltd/eris-db/tmsp"
+	tmsp "github.com/tendermint/tmsp/server"
 )
 
 var log = log15.New("module", "eris/erisdb_server")
@@ -82,14 +86,57 @@ func ServeErisDB(workDir string) (*server.ServeProcess, error) {
 	}
 
 	// Set the node up.
-	nodeRd := make(chan struct{})
-	nd := node.NewNode(privVal)
-	// Load the supporting objects.
-	pipe := ep.NewPipe(nd)
+	// nodeRd := make(chan struct{})
+	// nd := node.NewNode()
+
+	// Load the application state
+	// The app state used to be managed by tendermint node,
+	// but is now managed by ErisDB.
+	// The tendermint core only stores the blockchain (history of txs)
+	stateDB := dbm.GetDB("state")
+	state := sm.LoadState(stateDB)
+	var genDoc *stypes.GenesisDoc
+	if state == nil {
+		genDoc, state = sm.MakeGenesisStateFromFile(stateDB, config.GetString("genesis_file"))
+		state.Save()
+		// write the gendoc to db
+		buf, n, err := new(bytes.Buffer), new(int64), new(error)
+		wire.WriteJSON(genDoc, buf, n, err)
+		stateDB.Set(stypes.GenDocKey, buf.Bytes())
+		if *err != nil {
+			Exit(Fmt("Unable to write gendoc to db: %v", err))
+		}
+	} else {
+		genDocBytes := stateDB.Get(stypes.GenDocKey)
+		err := new(error)
+		wire.ReadJSONPtr(&genDoc, genDocBytes, err)
+		if *err != nil {
+			Exit(Fmt("Unable to read gendoc from db: %v", err))
+		}
+	}
+	// add the chainid to the global config
+	config.Set("chain_id", state.ChainID)
+
+	evsw := events.NewEventSwitch()
+	app := edbapp.NewErisDBApp(state, evsw)
+
+	// Start the tmsp listener for state update commands
+	go func() {
+		// TODO config
+		_, err := tmsp.StartListener("tcp://0.0.0.0:46658", app)
+		if err != nil {
+			// TODO: play nice
+			Exit(err.Error())
+		}
+	}()
+
+	// Load supporting objects.
+	pipe := ep.NewPipe(app)
 	codec := &TCodec{}
 	evtSubs := NewEventSubscriptions(pipe.Events())
 	// The services.
 	tmwss := NewErisDbWsService(codec, pipe)
+	//
 	tmjs := NewErisDbJsonService(codec, pipe, evtSubs)
 	// The servers.
 	jsonServer := NewJsonRpcServer(tmjs)
@@ -98,9 +145,9 @@ func ServeErisDB(workDir string) (*server.ServeProcess, error) {
 	// Create a server process.
 	proc := server.NewServeProcess(sConf, jsonServer, restServer, wsServer)
 
-	stopChan := proc.StopEventChannel()
-	go startNode(nd, nodeRd, stopChan)
-	<-nodeRd
+	//stopChan := proc.StopEventChannel()
+	//go startNode(nd, nodeRd, stopChan)
+	//<-nodeRd
 	return proc, nil
 }
 
