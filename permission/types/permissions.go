@@ -2,7 +2,7 @@ package types
 
 import (
 	"fmt"
-	. "github.com/tendermint/go-common"
+	// . "github.com/tendermint/go-common"
 )
 
 //------------------------------------------------------------------------------------------------

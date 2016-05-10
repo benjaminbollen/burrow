@@ -17,8 +17,12 @@
 package config
 
 import (
-	"github.com/eris-ltd/eris-db/files"
+  "fmt"
+
+	"github.com/spf13/viper"
 	"github.com/naoina/toml"
+
+	"github.com/eris-ltd/eris-db/files"
 )
 
 // Standard configuration file for the server.
@@ -91,6 +95,8 @@ type (
 		VMLog           bool   `toml:"vm_log"`
 	}
 )
+
+// Initialise
 
 func DefaultServerConfig() ServerConfig {
 	cp := ""
