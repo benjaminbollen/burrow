@@ -3,7 +3,7 @@ package core
 import (
 	"fmt"
 
-	acm "github.com/eris-ltd/eris-db/account"
+	acm "github.com/eris-ltd/eris-db/manager/eris-mint/account"
 	"github.com/eris-ltd/eris-db/evm"
 	ctypes "github.com/eris-ltd/eris-db/rpc/core/types"
 	"github.com/eris-ltd/eris-db/state"
