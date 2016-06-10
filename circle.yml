@@ -24,6 +24,7 @@ dependencies:
 
 test:
   override:
+    - ./checksignature.sh 2e46aa43c2f13386421f9387f41b323adae41908
     - go test -v ./...
 
 deployment:
