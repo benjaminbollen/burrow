@@ -20,10 +20,13 @@ import (
   "bytes"
   "fmt"
 
-  db                "github.com/tendermint/go-db"
-  tendermint_events "github.com/tendermint/go-events"
+	crypto            "github.com/tendermint/go-crypto"
+	db                "github.com/tendermint/go-db"
+	tendermint_common "github.com/tendermint/go-common"
+	tendermint_events "github.com/tendermint/go-events"
 	tendermint_types  "github.com/tendermint/tendermint/types"
-  wire              "github.com/tendermint/go-wire"
+	tmsp_types        "github.com/tendermint/tmsp/types"
+	wire              "github.com/tendermint/go-wire"
 
   log "github.com/eris-ltd/eris-logger"
 
@@ -36,6 +39,7 @@ import (
 	state                "github.com/eris-ltd/eris-db/manager/eris-mint/state"
 	state_types          "github.com/eris-ltd/eris-db/manager/eris-mint/state/types"
 	transaction          "github.com/eris-ltd/eris-db/txs"
+	vm                   "github.com/eris-ltd/eris-db/manager/eris-mint/evm"
 )
 
 type ErisMintPipe struct {
@@ -87,8 +91,6 @@ func NewErisMintPipe(moduleConfig *config.ModuleConfig,
   // of the old Eris-DB / Tendermint and should be considered as an in-process
   // call when possible
   tendermintHost := moduleConfig.Config.GetString("tendermint_host")
-  log.Debug(fmt.Sprintf("Starting ErisMint RPC client to Tendermint host on %s",
-    tendermintHost))
   erisMint.SetHostAddress(tendermintHost)
 
   // initialise the components of the pipe
@@ -112,6 +114,7 @@ func NewErisMintPipe(moduleConfig *config.ModuleConfig,
     transactor:    transactor,
 		network:       newNetwork(),
     consensus:     nil,
+		// genesis cache
 		genesisDoc:    genesisDoc,
 		genesisState:  nil,
   }, nil
@@ -246,69 +249,249 @@ func (pipe *ErisMintPipe) Status() (*rpc_tendermint_types.ResultStatus, error) {
 }
 
 func (pipe *ErisMintPipe) NetInfo() (*rpc_tendermint_types.ResultNetInfo, error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	listening := pipe.consensusEngine.IsListening()
+	listeners := []string{}
+	for _, listener := range pipe.consensusEngine.Listeners() {
+		listeners = append(listeners, listener.String())
+	}
+  peers := pipe.consensusEngine.Peers()
+	return &rpc_tendermint_types.ResultNetInfo{
+		Listening: listening,
+		Listeners: listeners,
+		Peers:     peers,
+	}, nil
 }
 
 func (pipe *ErisMintPipe) Genesis() (*rpc_tendermint_types.ResultGenesis, error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	return &rpc_tendermint_types.ResultGenesis {
+		// TODO: [ben] sharing pointer to unmutated GenesisDoc, but is not immutable
+		Genesis: pipe.genesisDoc,
+	}, nil
 }
 
 // Accounts
 func (pipe *ErisMintPipe) GetAccount(address []byte) (*rpc_tendermint_types.ResultGetAccount,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	cache := pipe.erisMint.GetCheckCache()
+	// cache := mempoolReactor.Mempool.GetCache()
+	account := cache.GetAccount(address)
+	if account == nil {
+		log.Warn("Nil Account")
+		return &rpc_tendermint_types.ResultGetAccount{nil}, nil
+	}
+	return &rpc_tendermint_types.ResultGetAccount{account}, nil
 }
 
 func (pipe *ErisMintPipe) ListAccounts() (*rpc_tendermint_types.ResultListAccounts, error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	var blockHeight int
+	var accounts []*account.Account
+	state := pipe.erisMint.GetState()
+	blockHeight = state.LastBlockHeight
+	state.GetAccounts().Iterate(func(key []byte, value []byte) bool {
+		accounts = append(accounts, account.DecodeAccount(value))
+		return false
+	})
+	return &rpc_tendermint_types.ResultListAccounts{blockHeight, accounts}, nil
 }
 
 func (pipe *ErisMintPipe) GetStorage(address, key []byte) (*rpc_tendermint_types.ResultGetStorage,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	state := pipe.erisMint.GetState()
+	// state := consensusState.GetState()
+	account := state.GetAccount(address)
+	if account == nil {
+		return nil, fmt.Errorf("UnknownAddress: %X", address)
+	}
+	storageRoot := account.StorageRoot
+	storageTree := state.LoadStorage(storageRoot)
+
+	_, value, exists := storageTree.Get(
+		tendermint_common.LeftPadWord256(key).Bytes())
+	if !exists { // value == nil {
+		return &rpc_tendermint_types.ResultGetStorage{key, nil}, nil
+	}
+	return &rpc_tendermint_types.ResultGetStorage{key, value}, nil
 }
 
 func (pipe *ErisMintPipe) DumpStorage(address []byte) (*rpc_tendermint_types.ResultDumpStorage,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	state := pipe.erisMint.GetState()
+	account := state.GetAccount(address)
+	if account == nil {
+		return nil, fmt.Errorf("UnknownAddress: %X", address)
+	}
+	storageRoot := account.StorageRoot
+	storageTree := state.LoadStorage(storageRoot)
+	storageItems := []rpc_tendermint_types.StorageItem{}
+	storageTree.Iterate(func(key []byte, value []byte) bool {
+		storageItems = append(storageItems, rpc_tendermint_types.StorageItem{key,
+			value})
+		return false
+	})
+	return &rpc_tendermint_types.ResultDumpStorage{storageRoot, storageItems}, nil
 }
 
 // Call
-func (pipe *ErisMintPipe) Call(fromAddres, toAddress, data []byte) (*rpc_tendermint_types.ResultCall,
+func (pipe *ErisMintPipe) Call(fromAddress, toAddress, data []byte) (*rpc_tendermint_types.ResultCall,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	st := pipe.erisMint.GetState()
+	cache := state.NewBlockCache(st)
+	outAcc := cache.GetAccount(toAddress)
+	if outAcc == nil {
+		return nil, fmt.Errorf("Account %x does not exist", toAddress)
+	}
+	callee := toVMAccount(outAcc)
+	caller := &vm.Account{Address: tendermint_common.LeftPadWord256(fromAddress)}
+	txCache := state.NewTxCache(cache)
+	params := vm.Params{
+		BlockHeight: int64(st.LastBlockHeight),
+		BlockHash:   tendermint_common.LeftPadWord256(st.LastBlockHash),
+		BlockTime:   st.LastBlockTime.Unix(),
+		GasLimit:    st.GetGasLimit(),
+	}
+
+	vmach := vm.NewVM(txCache, params, caller.Address, nil)
+	gas := st.GetGasLimit()
+	ret, err := vmach.Call(caller, callee, callee.Code, data, 0, &gas)
+	if err != nil {
+		return nil, err
+	}
+	return &rpc_tendermint_types.ResultCall{Return: ret}, nil
 }
 
 func (pipe *ErisMintPipe) CallCode(fromAddress, code, data []byte) (*rpc_tendermint_types.ResultCall,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	st := pipe.erisMint.GetState()
+	cache := pipe.erisMint.GetCheckCache()
+	callee := &vm.Account{Address: tendermint_common.LeftPadWord256(fromAddress)}
+	caller := &vm.Account{Address: tendermint_common.LeftPadWord256(fromAddress)}
+	txCache := state.NewTxCache(cache)
+	params := vm.Params{
+		BlockHeight: int64(st.LastBlockHeight),
+		BlockHash:   tendermint_common.LeftPadWord256(st.LastBlockHash),
+		BlockTime:   st.LastBlockTime.Unix(),
+		GasLimit:    st.GetGasLimit(),
+	}
+
+	vmach := vm.NewVM(txCache, params, caller.Address, nil)
+	gas := st.GetGasLimit()
+	ret, err := vmach.Call(caller, callee, code, data, 0, &gas)
+	if err != nil {
+		return nil, err
+	}
+	return &rpc_tendermint_types.ResultCall{Return: ret}, nil
 }
 
 // TODO: [ben] deprecate as we should not allow unsafe behaviour
 // where a user is allowed to send a private key over the wire,
 // especially unencrypted.
-func (pipe *ErisMintPipe) SignTransaction(transaction transaction.Tx,
+func (pipe *ErisMintPipe) SignTransaction(tx transaction.Tx,
 	privAccounts []*account.PrivAccount) (*rpc_tendermint_types.ResultSignTx,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+
+	for i, privAccount := range privAccounts {
+		if privAccount == nil || privAccount.PrivKey == nil {
+			return nil, fmt.Errorf("Invalid (empty) privAccount @%v", i)
+		}
+	}
+	switch tx.(type) {
+	case *transaction.SendTx:
+		sendTx := tx.(*transaction.SendTx)
+		for i, input := range sendTx.Inputs {
+			input.PubKey = privAccounts[i].PubKey
+			input.Signature = privAccounts[i].Sign(pipe.transactor.chainID, sendTx)
+		}
+	case *transaction.CallTx:
+		callTx := tx.(*transaction.CallTx)
+		callTx.Input.PubKey = privAccounts[0].PubKey
+		callTx.Input.Signature = privAccounts[0].Sign(pipe.transactor.chainID, callTx)
+	case *transaction.BondTx:
+		bondTx := tx.(*transaction.BondTx)
+		// the first privaccount corresponds to the BondTx pub key.
+		// the rest to the inputs
+		bondTx.Signature = privAccounts[0].Sign(pipe.transactor.chainID, bondTx).(crypto.SignatureEd25519)
+		for i, input := range bondTx.Inputs {
+			input.PubKey = privAccounts[i+1].PubKey
+			input.Signature = privAccounts[i+1].Sign(pipe.transactor.chainID, bondTx)
+		}
+	case *transaction.UnbondTx:
+		unbondTx := tx.(*transaction.UnbondTx)
+		unbondTx.Signature = privAccounts[0].Sign(pipe.transactor.chainID, unbondTx).(crypto.SignatureEd25519)
+	case *transaction.RebondTx:
+		rebondTx := tx.(*transaction.RebondTx)
+		rebondTx.Signature = privAccounts[0].Sign(pipe.transactor.chainID, rebondTx).(crypto.SignatureEd25519)
+	}
+	return &rpc_tendermint_types.ResultSignTx{tx}, nil
 }
 
 // Name registry
 func (pipe *ErisMintPipe) GetName(name string) (*rpc_tendermint_types.ResultGetName, error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	currentState := pipe.erisMint.GetState()
+	entry := currentState.GetNameRegEntry(name)
+	if entry == nil {
+		return nil, fmt.Errorf("Name %s not found", name)
+	}
+	return &rpc_tendermint_types.ResultGetName{entry}, nil
 }
 
 func (pipe *ErisMintPipe) ListNames() (*rpc_tendermint_types.ResultListNames, error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	var blockHeight int
+	var names []*transaction.NameRegEntry
+	currentState := pipe.erisMint.GetState()
+	blockHeight = currentState.LastBlockHeight
+	currentState.GetNames().Iterate(func(key []byte, value []byte) bool {
+		names = append(names, state.DecodeNameRegEntry(value))
+		return false
+	})
+	return &rpc_tendermint_types.ResultListNames{blockHeight, names}, nil
 }
 
 // Memory pool
-func (pipe *ErisMintPipe) BroadcastTxAsync(transaction transaction.Tx) (*rpc_tendermint_types.ResultBroadcastTx,
-	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+// NOTE: transaction must be signed
+func (pipe *ErisMintPipe) BroadcastTxAsync(tx transaction.Tx) (
+	*rpc_tendermint_types.ResultBroadcastTx, error) {
+	err := pipe.consensusEngine.BroadcastTransaction(transaction.EncodeTx(tx), nil)
+	if err != nil {
+		return nil, fmt.Errorf("Error broadcasting transaction: %v", err)
+	}
+	return &rpc_tendermint_types.ResultBroadcastTx{}, nil
 }
 
-func (pipe *ErisMintPipe) BroadcastTxSync(transaction transaction.Tx) (*rpc_tendermint_types.ResultBroadcastTx,
+func (pipe *ErisMintPipe) BroadcastTxSync(tx transaction.Tx) (*rpc_tendermint_types.ResultBroadcastTx,
 	error) {
-	return nil, fmt.Errorf("Unimplemented.")
+	responseChannel := make(chan *tmsp_types.Response, 1)
+	err := pipe.consensusEngine.BroadcastTransaction(transaction.EncodeTx(tx),
+		func(res *tmsp_types.Response) { responseChannel <- res	})
+	if err != nil {
+		return nil, fmt.Errorf("Error broadcasting transaction: %v", err)
+	}
+	// NOTE: [ben] This Response is set in /tmsp/client/local_remote_client.go
+	// a call to Application, here implemented by ErisMint, over local callback,
+	// or TMSP RPC call.  Hence the result is determined by ErisMint/erismint.go
+	// CheckTx() Result (Result converted to ReqRes into Response returned here)
+	// NOTE: [ben] BroadcastTx wraps around CheckTx for Tendermint
+	response := <-responseChannel
+	responseCheckTx := response.GetCheckTx()
+	if responseCheckTx == nil {
+		return nil, fmt.Errorf("Error, application did not return CheckTx response.")
+	}
+	resultBroadCastTx := &rpc_tendermint_types.ResultBroadcastTx {
+		Code: responseCheckTx.Code,
+		Data: responseCheckTx.Data,
+		Log:  responseCheckTx.Log,
+	}
+	switch responseCheckTx.Code {
+	case tmsp_types.CodeType_OK:
+		return resultBroadCastTx, nil
+	case tmsp_types.CodeType_EncodingError:
+		return resultBroadCastTx, fmt.Errorf(resultBroadCastTx.Log)
+	case tmsp_types.CodeType_InternalError:
+		return resultBroadCastTx, fmt.Errorf(resultBroadCastTx.Log)
+	default:
+		log.WithFields(log.Fields{
+			"application": GetErisMintVersion().GetVersionString(),
+			"TMSP_code_type": responseCheckTx.Code,
+		}).Warn("Unknown error returned from Tendermint CheckTx on BroadcastTxSync")
+		return resultBroadCastTx, fmt.Errorf("Unknown error returned: " + responseCheckTx.Log)
+	}
 }

@@ -20,6 +20,9 @@ import (
 	crypto           "github.com/tendermint/go-crypto"
 	p2p              "github.com/tendermint/go-p2p"
 	tendermint_types "github.com/tendermint/tendermint/types"
+	tmsp_types        "github.com/tendermint/tmsp/types"
+
+	rpc_tendermint_types "github.com/eris-ltd/eris-db/rpc/tendermint/core/types"
 )
 
 // TODO: [ben] explore the value of abstracting the consensus into an interface
@@ -32,10 +35,18 @@ type ConsensusEngine interface {
 	LoadBlockMeta(height int) *tendermint_types.BlockMeta
 
 	// Peer-2-Peer
+	IsListening() bool
+	Listeners() []p2p.Listener
 	NodeInfo() *p2p.NodeInfo
+	Peers() []rpc_tendermint_types.Peer
 
 	// Private Validator
 	PublicValidatorKey() crypto.PubKey
+
+	// Memory pool
+	BroadcastTransaction(transaction []byte,
+		callback func(*tmsp_types.Response)) error
+
 }
 
 // type Communicator interface {

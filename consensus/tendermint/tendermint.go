@@ -30,12 +30,14 @@ import (
 	node             "github.com/tendermint/tendermint/node"
 	proxy            "github.com/tendermint/tendermint/proxy"
 	tendermint_types "github.com/tendermint/tendermint/types"
+	tmsp_types       "github.com/tendermint/tmsp/types"
 
 	log "github.com/eris-ltd/eris-logger"
 
-	config "github.com/eris-ltd/eris-db/config"
-	definitions "github.com/eris-ltd/eris-db/definitions"
-	manager_types "github.com/eris-ltd/eris-db/manager/types"
+	config               "github.com/eris-ltd/eris-db/config"
+	definitions          "github.com/eris-ltd/eris-db/definitions"
+	manager_types        "github.com/eris-ltd/eris-db/manager/types"
+	rpc_tendermint_types "github.com/eris-ltd/eris-db/rpc/tendermint/core/types"
 	// files  "github.com/eris-ltd/eris-db/files"
 )
 
@@ -60,6 +62,9 @@ func NewTendermintNode(moduleConfig *config.ModuleConfig,
 	// to be written in tendermint's root directory.
 	// NOTE: [ben] as elsewhere Sub panics if config file does not have this
 	// subtree. To shield in go-routine, or PR to viper.
+	if !moduleConfig.Config.IsSet("confighuration") {
+		return nil, fmt.Errorf("Failed to extract Tendermint configuration subtree.")
+	}
 	tendermintConfigViper := moduleConfig.Config.Sub("configuration")
 	if tendermintConfigViper == nil {
 		return nil,
@@ -147,6 +152,28 @@ func (this *TendermintNode) LoadBlockMeta(height int) *tendermint_types.BlockMet
 	return this.tmintNode.BlockStore().LoadBlockMeta(height)
 }
 
+func (this *TendermintNode) IsListening() bool {
+	return this.tmintNode.Switch().IsListening()
+}
+
+func (this *TendermintNode) Listeners() []p2p.Listener {
+	var copyListeners []p2p.Listener
+	// copy slice of Listeners
+	copy(copyListeners[:], this.tmintNode.Switch().Listeners())
+	return copyListeners
+}
+
+func (this *TendermintNode) Peers() []rpc_tendermint_types.Peer {
+	peers := []rpc_tendermint_types.Peer{}
+	for _, peer := range this.tmintNode.Switch().Peers().List() {
+		peers = append(peers, rpc_tendermint_types.Peer {
+			NodeInfo:   *peer.NodeInfo,
+			IsOutbound: peer.IsOutbound(),
+		})
+	}
+	return peers
+}
+
 func (this *TendermintNode) NodeInfo() *p2p.NodeInfo {
 	var copyNodeInfo = new(p2p.NodeInfo)
 	// call Switch().NodeInfo is not go-routine safe, so copy
@@ -169,6 +196,11 @@ func (this *TendermintNode) PublicValidatorKey() crypto.PubKey {
 		copyPublicValidatorKey = nil
 	}
 	return copyPublicValidatorKey
+}
+
+func (this *TendermintNode) BroadcastTransaction(transaction []byte,
+	callback func(*tmsp_types.Response)) error {
+	return this.tmintNode.MempoolReactor().BroadcastTx(transaction, callback)
 }
 
 //------------------------------------------------------------------------------
