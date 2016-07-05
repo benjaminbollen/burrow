@@ -130,26 +130,28 @@ func Serve(cmd *cobra.Command, args []string) {
     log.Fatalf("Failed to load core: %s", err)
   }
 
-  serverConfig, err := core.LoadServerConfig(do)
-  if err != nil {
-    log.Fatalf("Failed to load server configuration: %s.", err)
-    os.Exit(1)
-  }
-  serverProcess, err := newCore.NewGatewayV0(serverConfig)
-  if err != nil {
-    log.Fatalf("Failed to load servers: %s.", err)
-    os.Exit(1)
-  }
-  err = serverProcess.Start()
-  if err != nil {
-    log.Fatalf("Failed to start servers: %s.", err)
-    os.Exit(1)
-  }
-	_, err = newCore.NewGatewayTendermint(serverConfig)
-	if err != nil {
-		log.Fatalf("Failed to start Tendermint gateway")
-	}
-  <- serverProcess.StopEventChannel()
+  // serverConfig, err := core.LoadServerConfig(do)
+  // if err != nil {
+  //   log.Fatalf("Failed to load server configuration: %s.", err)
+  //   os.Exit(1)
+  // }
+  // serverProcess, err := newCore.NewGatewayV0(serverConfig)
+  // if err != nil {
+  //   log.Fatalf("Failed to load servers: %s.", err)
+  //   os.Exit(1)
+  // }
+  // err = serverProcess.Start()
+  // if err != nil {
+  //   log.Fatalf("Failed to start servers: %s.", err)
+  //   os.Exit(1)
+  // }
+	// _, err = newCore.NewGatewayTendermint(serverConfig)
+	// if err != nil {
+	// 	log.Fatalf("Failed to start Tendermint gateway")
+	// }
+  // <- serverProcess.StopEventChannel()
+	hold := newCore.DoNothing()
+	<-hold
 }
 
 //------------------------------------------------------------------------------

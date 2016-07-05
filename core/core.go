@@ -119,3 +119,8 @@ func (core *Core) NewGatewayTendermint(config *server.ServerConfig) (
 	return rpc_tendermint.NewTendermintWebsocketServer(config,
 		core.tendermintPipe, core.evsw)
 }
+
+func (core *Core) DoNothing() chan bool {
+	holdForever := make(chan bool)
+	return holdForever
+}
