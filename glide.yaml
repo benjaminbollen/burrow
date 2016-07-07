@@ -3,7 +3,10 @@ import:
 - package: github.com/eris-ltd/eris-logger
 - package: github.com/spf13/cobra
 - package: github.com/spf13/viper
+- package: github.com/ethereum/go-ethereum
+  version: b7e3dfc5a2bc7e2f4d653fbe0ec9774277a10643
 - package: github.com/tendermint/tendermint
+  version: aaea0c5d2e3ecfbf29f2608f9d43649ec7f07f50
 - package: github.com/gin-gonic/gin
 - package: github.com/gorilla/websocket
 - package: github.com/naoina/toml
