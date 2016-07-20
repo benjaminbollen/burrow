@@ -20,10 +20,15 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"strings"
 
 	events "github.com/tendermint/go-events"
 	rpcserver "github.com/tendermint/go-rpc/server"
+
+	log "github.com/eris-ltd/eris-logger"
 
 	definitions "github.com/eris-ltd/eris-db/definitions"
 	server "github.com/eris-ltd/eris-db/server"
@@ -32,6 +37,7 @@ import (
 type TendermintWebsocketServer struct {
 	routes    TendermintRoutes
 	listeners []net.Listener
+	stopChan  chan bool
 }
 
 func NewTendermintWebsocketServer(config *server.ServerConfig,
@@ -62,8 +68,26 @@ func NewTendermintWebsocketServer(config *server.ServerConfig,
 		}
 		listeners[i] = listener
 	}
+	// add simple interrupt
+	signals := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		signal := <-signals
+		// TODO: [ben] clean up rpc, and make single listener to coordinate cleanup.
+		log.Fatalf("Received %s signal. Marmots out.", signal)
+		done <- true
+	}()
+
 	return &TendermintWebsocketServer{
 		routes:    tendermintRoutes,
 		listeners: listeners,
+		stopChan:  done,
 	}, nil
+}
+
+// StopEventChannel returns channel listening to intercept system event
+// TODO: [ben] integrate with clean up with core and other gateways
+func (self *TendermintWebsocketServer) StopEventChannel() chan bool {
+	return self.stopChan
 }

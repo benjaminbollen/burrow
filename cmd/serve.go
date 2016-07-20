@@ -153,11 +153,13 @@ func Serve(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to start servers: %s.", err)
 			os.Exit(1)
 		}
-		_, err = newCore.NewGatewayTendermint(serverConfig)
+		tendermintWebsocketServer, err := newCore.NewGatewayTendermint(serverConfig)
 		if err != nil {
-			log.Fatalf("Failed to start Tendermint gateway")
+			log.Fatalf("Failed to start Tendermint gateway: %s", err)
 		}
+		// TODO: [ben] organise interrupt signal in single cleanup effort
 		<-serverProcess.StopEventChannel()
+		<-tendermintWebsocketServer.StopEventChannel()
 	} else {
 		signals := make(chan os.Signal, 1)
 		done := make(chan bool, 1)
