@@ -114,6 +114,51 @@ func Call(nodeAddr, signAddr, pubkey, addr, toAddr, amtS, nonceS, gasS, feeS, da
 // 	return tx, nil
 // }
 
+func AccountDetails(nodeAddr, pubkey, addr string) (*account.Account, error) {
+	var pubKeyBytes []byte
+	if pubkey == "" && addr == "" {
+		err = fmt.Errorf("at least one of --pubkey or --addr must be given")
+		return
+	} else if pubkey != "" {
+		if addr != "" {
+			log.WithFields(log.Fields{
+				"public key": pubkey,
+				"address": addr,
+				}).Info("you have specified both a pubkey and an address. the pubkey takes precedent")
+		}
+		pubKeyBytes, err = hex.DecodeString(pubkey)
+		if err != nil {
+			err = fmt.Errorf("pubkey is bad hex: %v", err)
+			return
+		}
+	} else {
+		// grab the pubkey from eris-keys
+		pubKeyBytes, err = Pub(addr, signAddr)
+		if err != nil {
+			err = fmt.Errorf("failed to fetch pubkey for address (%s): %v", addr, err)
+			return
+		}
+
+	}
+
+	if len(pubKeyBytes) == 0 {
+		err = fmt.Errorf("Error resolving public key")
+		return
+	}
+
+	var pubArray [32]byte
+	copy(pubArray[:], pubKeyBytes)
+	pub = crypto.PubKeyEd25519(pubArray)
+	addrBytes := pub.Address()
+
+	client := rpcclient.NewClientURI(nodeAddr)
+	account, err := tendermint_client.GetAccount(client, addrBytes)
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
 // type PermFunc struct {
 // 	Name string
 // 	Args string
