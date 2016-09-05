@@ -99,6 +99,15 @@ func Call(nodeAddr, signAddr, pubkey, addr, toAddr, amtS, nonceS, gasS, feeS, da
 	return tx, nil
 }
 
+func GetName(nodeAddr, name string) (*types.NameRegEntry, error) {
+	client := rpcclient.NewClientURI(nodeAddr)
+	res, err := tendermint_client.GetName(client, name)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
 // func Name(nodeAddr, signAddr, pubkey, addr, amtS, nonceS, feeS, name, data string) (*txs.NameTx, error) {
 // 	pub, amt, nonce, err := checkCommon(nodeAddr, signAddr, pubkey, addr, amtS, nonceS)
 // 	if err != nil {
