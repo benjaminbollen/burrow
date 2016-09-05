@@ -114,11 +114,13 @@ func Call(nodeAddr, signAddr, pubkey, addr, toAddr, amtS, nonceS, gasS, feeS, da
 // 	return tx, nil
 // }
 
-func AccountDetails(nodeAddr, pubkey, addr string) (*account.Account, error) {
+func AccountDetails(nodeAddr, pubkey, signAddr, addr string) (*account.Account, error) {
 	var pubKeyBytes []byte
+	var pub crypto.PubKey
+	var err error
 	if pubkey == "" && addr == "" {
 		err = fmt.Errorf("at least one of --pubkey or --addr must be given")
-		return
+		return nil, err
 	} else if pubkey != "" {
 		if addr != "" {
 			log.WithFields(log.Fields{
@@ -129,21 +131,21 @@ func AccountDetails(nodeAddr, pubkey, addr string) (*account.Account, error) {
 		pubKeyBytes, err = hex.DecodeString(pubkey)
 		if err != nil {
 			err = fmt.Errorf("pubkey is bad hex: %v", err)
-			return
+			return nil, err
 		}
 	} else {
 		// grab the pubkey from eris-keys
 		pubKeyBytes, err = Pub(addr, signAddr)
 		if err != nil {
 			err = fmt.Errorf("failed to fetch pubkey for address (%s): %v", addr, err)
-			return
+			return nil, err
 		}
 
 	}
 
 	if len(pubKeyBytes) == 0 {
 		err = fmt.Errorf("Error resolving public key")
-		return
+		return nil, err
 	}
 
 	var pubArray [32]byte
