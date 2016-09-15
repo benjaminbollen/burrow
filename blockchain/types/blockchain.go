@@ -1,3 +1,5 @@
+// +build !arm
+
 // Copyright 2015, 2016 Eris Industries (UK) Ltd.
 // This file is part of Eris-RT
 
@@ -14,19 +16,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Eris-RT.  If not, see <http://www.gnu.org/licenses/>.
 
-package erismint
+// Blockchain is part of the pipe for ErisMint and provides the implementation
+// for the pipe to call into the ErisMint application
+package types
 
-import (
-	"testing"
-
-	assert "github.com/stretchr/testify/assert"
-)
-
-func TestCompatibleConsensus(t *testing.T) {
-	// TODO: [ben] expand by constructing and elementary testing for each listed
-	// compatible consensus engine
-
-	for _, listedConsensus := range compatibleConsensus {
-		assert.Nil(t, AssertCompatibleConsensus(listedConsensus))
-	}
+type Blockchain interface {
+	BlockStore
+	ChainId() string
 }
