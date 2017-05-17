@@ -27,7 +27,5 @@ echo "STORE: " $STORE
 monax pkgs do -c $CHAIN_ID -a $BURROW_CLIENT_ADDRESS -f query.yaml --set STORE=$STORE
 cp jobs_output.json	result_query.json
 
-BURROW_CLIENT_ABI_PATH="$(pwd)/abi/Store"
-BURROW_CLIENT_METHOD="saveItem"
-
-
+BURROW_CLIENT_ABI_PATH="$(pwd)/abi/Storage"
+BURROW_CLIENT_METHOD="set"

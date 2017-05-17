@@ -19,15 +19,78 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"strconv"
 	"strings"
 
 	gethAbi "github.com/ethereum/go-ethereum/accounts/abi"
 )
 
+func convertToCloserPType(inputType *gethAbi.Type, argument interface{}) (interface{}, error) {
+	// if (inputType.IsSlice || inputType.IsArray) &&
+	// 	!(inputType.T == gethAbi.BytesTy || inputType.T == gethAbi.FixedBytesTy || inputType.T == gethAbi.FunctionTy ) 
+
+	return nil, nil
+}
+
 // castToCloserType tries to recast golang type to golang type that is
 // closer to the desired ABI type, errors if casting fails or conversion not defined.
 func convertToCloserType(inputType *gethAbi.Type, argument interface{}) (interface{}, error) {
+	if isNestedType(inputType) {
+		fmt.Printf("MARMOT \n Ty %v " +
+			" IsSlice %v IsArray %v \n" +
+			" SliceSize %v Kind %v\n\n", inputType.T, inputType.IsSlice, inputType.IsArray, inputType.SliceSize, inputType.Kind)
+		fmt.Printf("MARMOT ELEM\n Ty %v " +
+			" IsSlice %v IsArray %v \n" +
+			" SliceSize %v Kind %v\n\n", inputType.Elem.T, inputType.Elem.IsSlice, inputType.Elem.IsArray, inputType.Elem.SliceSize, inputType.Elem.Kind)
+				
+		// // NOTE: multidimensional arrays are not correctly supported by go-ethereum/abi
+		// // so we need to make a more explicit check directly on the ABI definition file.
+		// if isNestedType(inputType.Elem) {
+		// 	return nil, fmt.Errorf("burrow-client currently does not support packing bytes for multi-dimensional arrays or slices.")
+		// }
+
+		var effectiveLength int = -1
+		// if IsArray length is set by function signature;
+		// otherwise leave indeterminate and set it with
+		// provided argument length later
+		if inputType.IsArray {
+			// if Array, SliceSize is set for Type
+			effectiveLength = inputType.SliceSize
+		}
+
+		switch reflect.TypeOf(argument).Kind() {
+		// require argument to be a slice
+		case reflect.Slice:
+			s := reflect.ValueOf(argument)
+
+			// if signature accepts variable length, set it
+			// it to number of provided elements
+			if effectiveLength == -1 {
+				effectiveLength = s.Len()
+			} else if effectiveLength != s.Len() {
+				return nil, fmt.Errorf("Error expected length of array (%v) " +
+					"does not match elements provided (%v).", effectiveLength, s)
+			}
+
+			arrayCloserTypes := reflect.SliceOf(inputType.Type)
+			for i := 0; i < effectiveLength; i++ {
+				arrayCloserTypes[i] = 2
+			}
+			fmt.Printf("MARMOT KIND %v \n\n", inputType.Type)
+
+			fmt.Printf("MARMOT LENGTH %v; len(s) %v; array %s \n\n", effectiveLength, s.Len(), arrayCloserTypes)
+			return arrayCloserTypes, nil
+
+		}
+
+		fmt.Printf("MARMOT JSON %s\n", argument)
+		return argument, nil
+
+		// return nil, fmt.Errorf("MARMOT ERROR\n\n")
+	}
+
+
 	switch inputType.T {
 	case gethAbi.IntTy:
 		return convertToInt(argument, inputType.Size)
@@ -37,12 +100,15 @@ func convertToCloserType(inputType *gethAbi.Type, argument interface{}) (interfa
 		return convertToBool(argument)
 	case gethAbi.StringTy:
 		return convertToString(argument)
-		// case gethAbi.SliceTy:
+	// case gethAbi.SliceTy:
 	case gethAbi.AddressTy:
 		return convertToAddress(argument)
 	case gethAbi.FixedBytesTy:
+		// NOTE: if FixedBytesTy && varSize != 0 => SliceSize = varSize
 		return convertToFixedBytes(argument, inputType.SliceSize)
 	// case gethAbi.BytesTy:
+		// currently do not support 
+		// return converToSlice(argument)
 		// case gethAbi.HashTy:
 		// case gethAbi.FixedpointTy:
 		// case gethAbi.FunctionTy:
@@ -295,43 +361,43 @@ func reduceToVarSizeUint(integer uint64, size int) (interface{}, error) {
 	}
 }
 
-
-func convertToBool(argument interface{})(interface{}, error){
+// convertToBool is idempotent for type bool, and for int, uint,
+// float it converts 0 to false and 1 to true; and for string
+// it converts the string "0" and case-insensitive "false" to false,
+// and "1" and case-insensitive "true" to true. For other types
+// it will fail. 
+func convertToBool(argument interface{}) (interface{}, error) {
 	switch t := argument.(type) {
 	case bool:
 		return argument, nil
 
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		if t==0 {
+		if t == 0 {
 			return false, nil
-		} else if t==1 {
+		} else if t == 1 {
 			return true, nil
 		} else {
 			return nil, fmt.Errorf("Failed to convert (U)Int* to Bool, value not mappable")
 		}
 
 	case float32, float64:
-		if t==0 {
+		if t == 0 {
 			return false, nil
-		} else if t==1 {
+		} else if t == 1 {
 			return true, nil
 		} else {
 			return nil, fmt.Errorf("Failed to convert Float* type to Bool")
 		}
-		
+
 	case string:
-		if t=="0" {
+		if t == "0" || strings.ToLower(t) == "false" {
 			return false, nil
-		} else if t=="1" {
+		} else if t == "1" || strings.ToLower(t) == "true" {
 			return true, nil
-		} else if strings.ToLower(t) == "true" {
-			return true, nil
-		} else if strings.ToLower(t) == "false" {
-			return false, nil
 		} else {
 			return nil, fmt.Errorf("Failed to convert String type to Bool")
 		}
-		
+
 	case complex64, complex128:
 		return nil, fmt.Errorf("Failed to convert complex type to Bool")
 	default:
@@ -370,7 +436,7 @@ func convertToFixedBytes(argument interface{}, size int) (interface{}, error) {
 			return nil, fmt.Errorf("Failed to convert string to Fixed length bytes %v: overflow", size)
 		}
 
-		// Right pad into proper sized array 
+		// Right pad into proper sized array
 		padded := rightPadBytes(decoded, size)
 
 		return padded, nil
@@ -378,7 +444,6 @@ func convertToFixedBytes(argument interface{}, size int) (interface{}, error) {
 		return nil, fmt.Errorf("Failed to convert unhandled type to bytes")
 	}
 }
-
 
 // This is not working... Apparently its not the right type
 func convertToAddress(argument interface{}) (interface{}, error) {
@@ -412,17 +477,27 @@ func convertToAddress(argument interface{}) (interface{}, error) {
 	}
 }
 
+// func converToSlice(argument interface{}) (interface{}, error) {
+// 	switch t := argument.(type) {
+// 	case string:
+
+// 	default:
+// 		fmt.Printf("MARMOT: default")
+// 		return nil, fmt.Errorf("Failed to convert unhandled type to slice")
+// 	}
+// }
+
 // Ben, Sorry for putting these here, I couldn't find an existing function in our codebase that did this
 // If one exists, It should be an easy change.
 
 func rightPadBytes(inBytes []byte, size int) []byte {
 	padded := make([]byte, size)
-    copy(padded[0:len(inBytes)], inBytes)
-    return padded
+	copy(padded[0:len(inBytes)], inBytes)
+	return padded
 }
 
 func leftPadBytes(inBytes []byte, size int) []byte {
 	padded := make([]byte, size)
-    copy(padded[size - len(inBytes):], inBytes)
-    return padded
+	copy(padded[size-len(inBytes):], inBytes)
+	return padded
 }

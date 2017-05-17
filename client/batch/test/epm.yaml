@@ -7,3 +7,18 @@ jobs:
       instance: Store
       amount: 10000
       wait: true
+
+# - name: setStorage
+#   job:
+#     call:
+#       destination: $deployStore
+#       function: set
+#       data: 
+#         - 255
+#       abi: Storage
+
+# - name: queryStorage
+#   job:
+#     query-contract:
+#       destination: $deployStore
+#       function: get

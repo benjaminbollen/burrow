@@ -3,18 +3,18 @@
     "id": 0,
     "name": "Blanca Armstrong",
     "junk": "deadbeef",
-    "blob": "0123456789abcdefAAAA0123456789abcdefAAAA"
+    "nums": [1, 2]
   },
   {
     "id": 1,
     "name": "Clara White",
     "junk": "FEEDFACE",
-    "blob": "0123456789abcdefAAAA0123456789abcdefAAAA"
+    "nums": [5, 6]
   },
   {
     "id": 2,
     "name": "Lindsey George",
     "junk": "DEADBeef",
-    "blob": "0123456789abcdefAAAA0123456789abcdefAAAA"
+    "nums": [10, 11]
   }
 ]
