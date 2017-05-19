@@ -32,5 +32,3 @@ func isNestedType(inputType *gethAbi.Type) bool {
 		// or function identifiers which are effectively "bytes24"
 		inputType.T == gethAbi.FunctionTy))
 }
-
-func getValueForKind(kind reflect.Kind) reflect.Value

@@ -74,9 +74,9 @@ func convertToCloserType(inputType *gethAbi.Type, argument interface{}) (interfa
 			}
 
 			arrayCloserTypes := reflect.SliceOf(inputType.Type)
-			for i := 0; i < effectiveLength; i++ {
-				arrayCloserTypes[i] = 2
-			}
+			// for i := 0; i < effectiveLength; i++ {
+			// 	arrayCloserTypes[i] = 2
+			// }
 			fmt.Printf("MARMOT KIND %v \n\n", inputType.Type)
 
 			fmt.Printf("MARMOT LENGTH %v; len(s) %v; array %s \n\n", effectiveLength, s.Len(), arrayCloserTypes)
