@@ -26,12 +26,14 @@ import (
 	gethAbi "github.com/ethereum/go-ethereum/accounts/abi"
 )
 
-func convertToCloserPType(inputType *gethAbi.Type, argument interface{}) (interface{}, error) {
-	// if (inputType.IsSlice || inputType.IsArray) &&
-	// 	!(inputType.T == gethAbi.BytesTy || inputType.T == gethAbi.FixedBytesTy || inputType.T == gethAbi.FunctionTy ) 
+// func convertToInferedType(inputType *gethAbi.Type, argument interface{}) (interface{}, error) {
+// 	// if (inputType.IsSlice || inputType.IsArray) &&
+// 	// 	!(inputType.T == gethAbi.BytesTy || inputType.T == gethAbi.FixedBytesTy || inputType.T == gethAbi.FunctionTy ) 
 
-	return nil, nil
-}
+// 	inferedType, err := inferType(inputType)
+
+// 	return nil, nil
+// }
 
 // castToCloserType tries to recast golang type to golang type that is
 // closer to the desired ABI type, errors if casting fails or conversion not defined.
@@ -73,10 +75,46 @@ func convertToCloserType(inputType *gethAbi.Type, argument interface{}) (interfa
 					"does not match elements provided (%v).", effectiveLength, s)
 			}
 
-			arrayCloserTypes := reflect.SliceOf(inputType.Type)
-			// for i := 0; i < effectiveLength; i++ {
-			// 	arrayCloserTypes[i] = 2
-			// }
+			inferedType, err := inferType(inputType)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to infer type for %s: %s", inputType, err)
+			}
+			fmt.Printf("MARMOT INFERED TYPE: %s\n ", inferedType)
+			arrayCloserTypes := reflect.New(reflect.SliceOf(inferedType))
+			fmt.Printf("MARMOT INFERED SLICE: %s\n ", arrayCloserTypes)
+
+			for i := 0; i < effectiveLength; i++ {
+				// Value interface for ith element
+				// t := s.Index(i)
+				// convert value t to
+			// 	switch inferedType.(type) {
+			// 	case int8, int16, int32, int64:
+			// 		return convertToInt(argument, inputType.Size)
+			// 	case uint8, uint16, uint32, uint64:
+			// 		return convertToUint(argument, inputType.Size)
+			// 	case gethAbi.BoolTy:
+			// 		return convertToBool(argument)
+			// 	case gethAbi.StringTy:
+			// 		return convertToString(argument)
+			// 	// case gethAbi.SliceTy:
+			// 	case gethAbi.AddressTy:
+			// 		return convertToAddress(argument)
+			// 	case gethAbi.FixedBytesTy:
+			// 		// NOTE: if FixedBytesTy && varSize != 0 => SliceSize = varSize
+			// 		return convertToFixedBytes(argument, inputType.SliceSize)
+			// 	// case gethAbi.BytesTy:
+			// 		// currently do not support 
+			// 		// return converToSlice(argument)
+			// 		// case gethAbi.HashTy:
+			// 		// case gethAbi.FixedpointTy:
+			// 		// case gethAbi.FunctionTy:
+			// 		// default:
+			// 	}
+
+				// t := 2
+				// z := interface{}(t)
+				// arrayCloserTypes[i] = z
+			}
 			fmt.Printf("MARMOT KIND %v \n\n", inputType.Type)
 
 			fmt.Printf("MARMOT LENGTH %v; len(s) %v; array %s \n\n", effectiveLength, s.Len(), arrayCloserTypes)
@@ -116,6 +154,9 @@ func convertToCloserType(inputType *gethAbi.Type, argument interface{}) (interfa
 	}
 	return nil, nil
 }
+
+// func convertToInferedType(argument interface{})
+
 
 // convertToInt is idempotent for int; for other types
 // it tries to convert the value to var sized int, or fails

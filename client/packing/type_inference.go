@@ -22,24 +22,36 @@ import (
 	gethAbi "github.com/ethereum/go-ethereum/accounts/abi"
 )
 
-// inferType returns the golang type that matches
+// inferType returns the golang type that matches the abi type,
+// a boolean that specifies whether it is an array or slice, uint for size
+// 
 func inferType(abiType *gethAbi.Type) (reflect.Type, error) {
 
 	if isNestedType(abiType) {
 
 	}
 
+	if abiType.Elem != nil {
+		return inferType(abiType.Elem)
+	}
+
+
 	switch abiType.T {
 	// for integers Type.
+	// NOTE: for nested type T is not initialised and falsely defaulted to 0 IntTy
 	case gethAbi.IntTy:
 		return inferIntegerType(true, abiType.Size)
 	case gethAbi.UintTy:
 		return inferIntegerType(false, abiType.Size)
 	case gethAbi.BoolTy:
+		return reflect.TypeOf(false), nil
 	case gethAbi.StringTy:
+		return reflect.TypeOf(""), nil
+	// NOTE: SliceTy is never assigned by go-eth/abi
 	// case gethAbi.SliceTy:
-	case gethAbi.AddressTy:
-	case gethAbi.FixedBytesTy:
+
+	// case gethAbi.AddressTy:
+	// case gethAbi.FixedBytesTy:
 	// case gethAbi.BytesTy:
 	// case gethAbi.HashTy:
 	// case gethAbi.FixedpointTy:
@@ -88,4 +100,14 @@ func inferIntegerType(signed bool, varSize int) (reflect.Type, error) {
 default:
 		return reflect.TypeOf(big.Int{}), nil
 	}
+}
+
+// inferRank determines whether the type is scalar or vector valued
+// and returns zero for scalar, one for vector, or error if unhandled.
+func inferRank(abiType *gethAbi.Type) (uint, error) {
+
+	if isNestedType(abiType) {
+
+	}
+	return 0, nil
 }
