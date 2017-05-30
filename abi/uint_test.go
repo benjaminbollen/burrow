@@ -15,9 +15,12 @@
 package abi
 
 import (
+	// "bytes"
 	"math"
 	"math/big"
 	"testing"
+
+	// "github.com/hyperledger/burrow/word256"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -255,6 +258,48 @@ func TestUint256Conversion(t *testing.T) {
 		} else {
 			_, err := convertToUint256(conversion.input)
 			assert.Error(t, err, "Failed at index %v", i)
+		}
+	}
+}
+
+func TestUintSetAndBytes(t *testing.T) {
+	setUint256Tests := []struct {
+		shouldSucceed bool
+		size          IntegerSize
+		value         interface{}
+		word          []byte
+	}{
+		{true, 64, int(0), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{true, 64, int(1), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},
+		{true, 64, uint8(math.MaxUint8), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255}},
+		{true, 64, uint16(math.MaxUint16), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255}},
+		{true, 64, uint32(math.MaxUint32), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255}},
+		{true, 64, uint64(math.MaxUint64), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255}},
+ 		{true, 256, int(0), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{true, 256, int(1), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},
+		{true, 256, uint8(math.MaxUint8), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255}},
+		{true, 256, uint16(math.MaxUint16), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255}},
+		{true, 256, uint32(math.MaxUint32), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255}},
+		{true, 256, uint64(math.MaxUint64), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255}},
+        {true, 256, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)),
+        	[]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}},
+		
+		{false, 32, uint64(math.MaxUint64), []byte{}},
+	    {false, 256, new(big.Int).Lsh(big.NewInt(1), 256), []byte{}},
+	}
+	
+	for i, set := range setUint256Tests {
+		uint256, err := NewAbiUint(set.size)
+		assert.NoError(t, err)
+		if set.shouldSucceed {
+			assert.NoError(t, uint256.Set(set.value))
+			assert.Equal(t, set.word, uint256.Bytes(),
+				"Failed at index %d: bytes from Uint256 are not identical.", i)
+		} else {
+			assert.Error(t, uint256.Set(set.value))
+			unset256, _ := NewAbiUint(set.size)
+			assert.Equal(t, unset256.Bytes(), uint256.Bytes(),
+				"Failed at index %d: bytes from Uint256 should not be set.", i)
 		}
 	}
 }

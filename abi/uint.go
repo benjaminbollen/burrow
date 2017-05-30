@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/hyperledger/burrow/common/sanity"
+	"github.com/hyperledger/burrow/word256"
 )
 
 type AbiUint struct {
@@ -56,7 +57,7 @@ func NewAbiUint(size IntegerSize) (*AbiUint, error) {
 // TODO: accept hex encoded string and big integer to set values
 func (abiUint *AbiUint) Set(value interface{}) error {
 	if abiUint.representation == nil {
-		sanity.PanicSanity("ABI unsigned integer must always have a representation.")
+		sanity.PanicSanity("ABI unsigned integer must always have a representation for Set().")
 	}
 
 	switch abiUint.representation.(type) {
@@ -91,13 +92,32 @@ func (abiUint *AbiUint) Set(value interface{}) error {
 		}
 		abiUint.representation = convertedValue
 	default:
-		sanity.PanicSanity("ABI unsigned integer represented by unhandled type.")
+		sanity.PanicSanity("ABI unsigned integer represented by unhandled type for Set().")
 	}
 	return nil
 }
 
-func (abiUint *AbiUint) Bytes() ([]byte, error) {
-	return nil, nil
+// Bytes returns the word256 byte representation of Uint
+func (abiUint *AbiUint) Bytes() []byte {
+	if abiUint.representation == nil {
+		sanity.PanicSanity("ABI unsigned integer must always have a representation for Bytes().")
+	}
+
+	switch t := abiUint.representation.(type) {
+	case uint8:
+		return word256.Uint64ToWord256(uint64(t)).Bytes()
+	case uint16:
+		return word256.Uint64ToWord256(uint64(t)).Bytes()
+	case uint32:
+		return word256.Uint64ToWord256(uint64(t)).Bytes()
+	case uint64:
+		return word256.Uint64ToWord256(t).Bytes()
+	case *big.Int:
+		return word256.Uint256ToWord256(t).Bytes()
+	default:
+		sanity.PanicSanity("ABI unsigned integer represented by unhandled type for Bytes().")
+	}
+	return nil
 }
 
 func (abiUint *AbiUint) String() string {
@@ -150,19 +170,11 @@ func checkUnderflowUint64(x uint64, t int64) (uint64, error) {
 	}
 }
 
-func checkUnderAndOverflowUint256(x uint64, t int64) (*big.Int, error) {
+func checkUnderflowUint256(x uint64, t int64) (*big.Int, error) {
 	if t >= 0 {
 		return new(big.Int).SetUint64(x), nil
 	} else {
 		return nil, fmt.Errorf("Failed to convert int %v to uint256: underflow", t)
-	}
-}
-
-func checkOverflowUint256(x *big.Int) error {
-	if x.Cmp(tt256) < 0 && big.NewInt(0).Cmp(x) <= 0 {
-		return nil
-	} else {
-		return fmt.Errorf("big.Int out of bounds of Uint256")
 	}
 }
 
@@ -187,7 +199,7 @@ func convertToUint8(value interface{}) (uint8, error) {
 	case uint32:
 		return checkOverflowUint8(uint8(t), uint64(t))
 	case uint64:
-		return checkOverflowUint8(uint8(t), uint64(t))
+		return checkOverflowUint8(uint8(t), t)
 	case float32:
 		y, err := checkIntegerUint(float64(t))
 		if err != nil {
@@ -237,13 +249,13 @@ func convertToUint16(value interface{}) (uint16, error) {
 	case uint:
 		return checkOverflowUint16(uint16(t), uint64(t))
 	case uint8:
-		return checkOverflowUint16(uint16(t), uint64(t))
+		return uint16(t), nil
 	case uint16:
 		return t, nil
 	case uint32:
 		return checkOverflowUint16(uint16(t), uint64(t))
 	case uint64:
-		return checkOverflowUint16(uint16(t), uint64(t))
+		return checkOverflowUint16(uint16(t), t)
 	case float32:
 		y, err := checkIntegerUint(float64(t))
 		if err != nil {
@@ -274,7 +286,7 @@ func convertToUint16(value interface{}) (uint16, error) {
 	case complex64, complex128:
 		return 0, fmt.Errorf("Failed to convert complex type to uint")
 	default:
-		return 0, fmt.Errorf("Failed to convert unhandled type to uint")
+		return 0, fmt.Errorf("Failed to convert unhandled type to uint16")
 	}
 }
 
@@ -293,9 +305,9 @@ func convertToUint32(value interface{}) (uint32, error) {
 	case uint:
 		return checkOverflowUint32(uint32(t), uint64(t))
 	case uint8:
-		return checkOverflowUint32(uint32(t), uint64(t))
+		return uint32(t), nil
 	case uint16:
-		return checkOverflowUint32(uint32(t), uint64(t))
+		return uint32(t), nil
 	case uint32:
 		return t, nil
 	case uint64:
@@ -328,9 +340,9 @@ func convertToUint32(value interface{}) (uint32, error) {
 			return uint32(0), nil
 		}
 	case complex64, complex128:
-		return 0, fmt.Errorf("Failed to convert complex type to uint")
+		return 0, fmt.Errorf("Failed to convert complex type to uint32")
 	default:
-		return 0, fmt.Errorf("Failed to convert unhandled type to uint")
+		return 0, fmt.Errorf("Failed to convert unhandled type to uint32")
 	}
 }
 
@@ -372,34 +384,40 @@ func convertToUint64(value interface{}) (uint64, error) {
 			return uint64(0), nil
 		}
 	case complex64, complex128:
-		return 0, fmt.Errorf("Failed to convert complex type to uint")
+		return 0, fmt.Errorf("Failed to convert complex type to uint64")
 	default:
-		return 0, fmt.Errorf("Failed to convert unhandled type to uint")
+		return 0, fmt.Errorf("Failed to convert unhandled type to uint64")
 	}
 }
 
 func convertToUint256(value interface{}) (*big.Int, error) {
 	switch t := value.(type) {
 	case int:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return checkUnderflowUint256(uint64(t), int64(t))
 	case int8:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return checkUnderflowUint256(uint64(t), int64(t))
 	case int16:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return checkUnderflowUint256(uint64(t), int64(t))
 	case int32:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return checkUnderflowUint256(uint64(t), int64(t))
 	case int64:
-		return checkUnderAndOverflowUint256(uint64(t), t)
+		return checkUnderflowUint256(uint64(t), t)
 	case uint:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return new(big.Int).SetUint64(uint64(t)), nil
 	case uint8:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return new(big.Int).SetUint64(uint64(t)), nil
 	case uint16:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return new(big.Int).SetUint64(uint64(t)), nil
 	case uint32:
-		return checkUnderAndOverflowUint256(uint64(t), int64(t))
+		return new(big.Int).SetUint64(uint64(t)), nil
 	case uint64:
-		return checkUnderAndOverflowUint256(t, int64(t))
+		return new(big.Int).SetUint64(t), nil
+	case *big.Int:
+		if err := word256.CheckOverflowUint256(t); err != nil {
+			return nil, err
+		} else {
+			return word256.U256(t), nil
+		}
 	case float32:
 		y, err := checkIntegerUint(float64(t))
 		if err != nil {
@@ -428,8 +446,8 @@ func convertToUint256(value interface{}) (*big.Int, error) {
 			return big.NewInt(0), nil
 		}
 	case complex64, complex128:
-		return nil, fmt.Errorf("Failed to convert complex type to uint")
+		return nil, fmt.Errorf("Failed to convert complex type to uint256")
 	default:
-		return nil, fmt.Errorf("Failed to convert unhandled type to uint")
+		return nil, fmt.Errorf("Failed to convert unhandled type to uint256")
 	}
 }
