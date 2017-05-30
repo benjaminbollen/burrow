@@ -16,6 +16,7 @@ package abi
 
 import (
 	"math"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,7 +26,7 @@ func TestUintString(t *testing.T) {
 	abiUint8, err := NewAbiUint(8)
 	if assert.NoError(t, err) {
 		assert.Equal(t, abiUint8.String(), "uint8")
-	}	
+	}
 	abiUint16, err := NewAbiUint(16)
 	if assert.NoError(t, err) {
 		assert.Equal(t, abiUint16.String(), "uint16")
@@ -59,7 +60,7 @@ func TestUint8Conversion(t *testing.T) {
 		{true, 1, 1},
 		{true, 1, "1"},
 		{true, 1, float32(1.0)},
-		
+
 		{true, 2, uint(2)},
 		{true, 3, uint8(3)},
 		{true, 4, uint16(4)},
@@ -71,7 +72,7 @@ func TestUint8Conversion(t *testing.T) {
 		{true, 4, int16(4)},
 		{true, 5, int32(5)},
 		{true, 6, int64(6)},
-		
+
 		{false, 0, uint(math.MaxUint8 + 1)},
 		{false, 0, int8(-3)},
 
@@ -79,7 +80,7 @@ func TestUint8Conversion(t *testing.T) {
 		{false, 1, "1.0"},
 	}
 
-	for _, conversion := range conversionUint8Tests {
+	for i, conversion := range conversionUint8Tests {
 		if conversion.shouldSucceed {
 			output, err := convertToUint8(conversion.input)
 			if assert.NoError(t, err) {
@@ -87,7 +88,7 @@ func TestUint8Conversion(t *testing.T) {
 			}
 		} else {
 			_, err := convertToUint8(conversion.input)
-			assert.Error(t, err)
+			assert.Error(t, err, "Failed at index %v", i)
 		}
 	}
 }
@@ -101,7 +102,7 @@ func TestUint16Conversion(t *testing.T) {
 		{true, 1, 1},
 		{true, 1, "1"},
 		{true, 1, float32(1.0)},
-		
+
 		{true, 2, uint(2)},
 		{true, 3, uint8(3)},
 		{true, 4, uint16(4)},
@@ -113,7 +114,7 @@ func TestUint16Conversion(t *testing.T) {
 		{true, 4, int16(4)},
 		{true, 5, int32(5)},
 		{true, 6, int64(6)},
-		
+
 		{false, 0, uint(math.MaxUint16 + 1)},
 		{false, 0, int16(-3)},
 
@@ -121,7 +122,7 @@ func TestUint16Conversion(t *testing.T) {
 		{false, 1, "1.0"},
 	}
 
-	for _, conversion := range conversionUint16Tests {
+	for i, conversion := range conversionUint16Tests {
 		if conversion.shouldSucceed {
 			output, err := convertToUint16(conversion.input)
 			if assert.NoError(t, err) {
@@ -129,7 +130,7 @@ func TestUint16Conversion(t *testing.T) {
 			}
 		} else {
 			_, err := convertToUint16(conversion.input)
-			assert.Error(t, err)
+			assert.Error(t, err, "Failed at index %v", i)
 		}
 	}
 }
@@ -143,7 +144,7 @@ func TestUint32Conversion(t *testing.T) {
 		{true, 1, 1},
 		{true, 1, "1"},
 		{true, 1, float32(1.0)},
-		
+
 		{true, 2, uint(2)},
 		{true, 3, uint8(3)},
 		{true, 4, uint16(4)},
@@ -155,7 +156,7 @@ func TestUint32Conversion(t *testing.T) {
 		{true, 4, int16(4)},
 		{true, 5, int32(5)},
 		{true, 6, int64(6)},
-		
+
 		{false, 0, uint(math.MaxUint32 + 1)},
 		{false, 0, int32(-3)},
 
@@ -163,7 +164,7 @@ func TestUint32Conversion(t *testing.T) {
 		{false, 1, "1.0"},
 	}
 
-	for _, conversion := range conversionUint32Tests {
+	for i, conversion := range conversionUint32Tests {
 		if conversion.shouldSucceed {
 			output, err := convertToUint32(conversion.input)
 			if assert.NoError(t, err) {
@@ -171,7 +172,7 @@ func TestUint32Conversion(t *testing.T) {
 			}
 		} else {
 			_, err := convertToUint32(conversion.input)
-			assert.Error(t, err)
+			assert.Error(t, err, "Failed at index %v", i)
 		}
 	}
 }
@@ -185,7 +186,7 @@ func TestUint64Conversion(t *testing.T) {
 		{true, 1, 1},
 		{true, 1, "1"},
 		{true, 1, float32(1.0)},
-		
+
 		{true, 2, uint(2)},
 		{true, 3, uint8(3)},
 		{true, 4, uint16(4)},
@@ -197,14 +198,14 @@ func TestUint64Conversion(t *testing.T) {
 		{true, 4, int16(4)},
 		{true, 5, int32(5)},
 		{true, 6, int64(6)},
-		
+
 		{false, 0, int64(-3)},
 
 		{false, 1, float64(1.0001)},
 		{false, 1, "1.0"},
 	}
 
-	for _, conversion := range conversionUint64Tests {
+	for i, conversion := range conversionUint64Tests {
 		if conversion.shouldSucceed {
 			output, err := convertToUint64(conversion.input)
 			if assert.NoError(t, err) {
@@ -212,7 +213,48 @@ func TestUint64Conversion(t *testing.T) {
 			}
 		} else {
 			_, err := convertToUint64(conversion.input)
-			assert.Error(t, err, "Failed at %v", conversion.input)
+			assert.Error(t, err, "Failed at index %v", i)
+		}
+	}
+}
+
+func TestUint256Conversion(t *testing.T) {
+	conversionUint256Tests := []struct {
+		shouldSucceed bool
+		intention     *big.Int
+		input         interface{}
+	}{
+		{true, big.NewInt(1), 1},
+		{true, big.NewInt(1), "1"},
+		{true, big.NewInt(1), float32(1.0)},
+
+		{true, big.NewInt(2), uint(2)},
+		{true, big.NewInt(3), uint8(3)},
+		{true, big.NewInt(4), uint16(4)},
+		{true, big.NewInt(5), uint32(5)},
+		{true, big.NewInt(6), uint64(6)},
+
+		{true, big.NewInt(2), int(2)},
+		{true, big.NewInt(3), int8(3)},
+		{true, big.NewInt(4), int16(4)},
+		{true, big.NewInt(5), int32(5)},
+		{true, big.NewInt(6), int64(6)},
+
+		{false, nil, int64(-3)},
+
+		{false, nil, float64(1.0001)},
+		{false, nil, "1.0"},
+	}
+
+	for i, conversion := range conversionUint256Tests {
+		if conversion.shouldSucceed {
+			output, err := convertToUint256(conversion.input)
+			if assert.NoError(t, err) {
+				assert.Equal(t, conversion.intention, output, "Failed to convert %v to uint256: %s", conversion.input, err)
+			}
+		} else {
+			_, err := convertToUint256(conversion.input)
+			assert.Error(t, err, "Failed at index %v", i)
 		}
 	}
 }
